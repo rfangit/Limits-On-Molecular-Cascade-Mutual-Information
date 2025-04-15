@@ -1,6 +1,71 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 
+# System of ODEs for birth-death process
+def birth_death_system(t, p, λ, μ, max_n):
+    dpdt = np.zeros_like(p)
+    
+    # Handle boundary cases
+    dpdt[0] = μ * p[1] - λ * p[0]
+    dpdt[max_n] = λ * p[max_n-1] - μ * max_n * p[max_n]
+    
+    # General case
+    for n in range(1, max_n):
+        dpdt[n] = λ * p[n-1] + μ * (n+1) * p[n+1] - (λ + μ * n) * p[n]
+    
+    return dpdt
+
+def poisson_steady_state_sim(steady_state_diffeq, initial_p, t_max, dt, λ, μ, max_n):
+    """
+    Computes the steady state solution of a birth-death process
+    
+    Parameters:
+    steady_state_diffeq: The ODE system function (birth_death_system)
+    initial_p: Initial probability distribution
+    t_max: Maximum time to simulate
+    dt: Time step
+    λ: Birth rate
+    μ: Death rate
+    max_n: Maximum population size (truncation)
+    
+    Returns:
+    Steady state probability distribution
+    """
+    t_eval = np.arange(0, t_max, dt)
+    solution = solve_ivp(steady_state_diffeq, [0, t_max], initial_p,
+                       t_eval=t_eval, method='RK45', args=(λ, μ, max_n))
+    steady_state = solution.y[:, -1]  # Get the final time point
+    return steady_state
+    
+# Poisson Birth-Death ODE system with detection
+def poisson_birth_death_detection_dt(t, p, λ, μ, α, max_n):
+    dpdt = np.zeros_like(p)
+    
+    # Boundary cases
+    dpdt[0] = μ * p[1] - λ * p[0]  # n=0
+    dpdt[-1] = λ * p[-2] - (μ * (max_n) + α * max_n) * p[-1]  # n=max_n
+    
+    # General case
+    for n in range(1, max_n):
+        dpdt[n] = (λ * p[n-1] + μ * (n+1) * p[n+1] - 
+                  (λ + μ * n + α * n) * p[n])
+    return dpdt
+
+def poisson_survival_probabilities(survival_diffeq, num_states, t_max, dt, λ, μ, α):
+    t_eval = np.arange(0, t_max, dt)
+    num_time_points = len(t_eval)
+    solution = np.zeros((num_states, num_time_points, num_states))
+    max_n = num_states - 1
+    
+    for initial_state in range(num_states):
+        initial_p = np.zeros(num_states)
+        initial_p[initial_state] = 1.0
+        sol = solve_ivp(survival_diffeq, [0, t_max], initial_p, 
+                   t_eval=t_eval, method='RK45', args=(λ, μ, α, max_n))
+        solution[initial_state, :, :] = sol.y.T
+    
+    return solution
+
 # Compute time derivatives for a two-state Markov system without detection events
 def two_state_system_dt(t, p, k_off, k_on):
     dp0dt = -k_on * p[0] + k_off * p[1]
